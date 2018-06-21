@@ -27,8 +27,10 @@ type Transport struct {
 func (tt *Transport) TC() TClient {
 	return tt.client
 }
-func (tt *Transport) Close() error {
-	return tt.p.put(tt, false)
+
+//当forceClose 为true时,会调用CloseConn释放连接.
+func (tt *Transport) Close(forceClose bool) error {
+	return tt.p.put(tt, forceClose)
 }
 
 func (tt *Transport) forceClose() error {

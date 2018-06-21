@@ -161,7 +161,7 @@ func TestConnPool_GetPut(t *testing.T) {
 		}
 		t.Log("pool Get:", conn.String(), "ActiveConn:", pool.AcivteConn())
 
-		tran.Close()
+		tran.Close(false)
 	}
 }
 
@@ -207,7 +207,7 @@ func TestConnPool_MaxActive(t *testing.T) {
 		}
 		t.Log("pool Get:", conn.String(), "ActiveConn:", pool.AcivteConn())
 
-		tran.Close()
+		tran.Close(false)
 
 		if pool.AcivteConn() != int32(pool.MaxActive) {
 			t.Fatalf("close err MaxActive:%v != MaxActive:%v", pool.MaxActive, pool.MaxActive)
@@ -272,7 +272,7 @@ func TestConnPool_IdleTimeout(t *testing.T) {
 				t.Fatal("pool get err:", err)
 			}
 			time.Sleep(time.Second)
-			tran.Close()
+			tran.Close(false)
 		}()
 	}
 
@@ -315,6 +315,6 @@ func BenchmarkConnPool_Get(b *testing.B) {
 			b.Fatal("pool get err:", err)
 		}
 
-		tran.Close()
+		tran.Close(false)
 	}
 }
