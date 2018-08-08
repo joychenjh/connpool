@@ -97,6 +97,26 @@ func TestConnPool_PingErr(t *testing.T) {
 	}
 }
 
+func TestConnPool_Heartbeat(t *testing.T) {
+
+	pool := GetDefPool(t)
+
+	pool.Heartbeat = func(c TClient, meta interface{}) (err error) {
+		t.Log("Heartbeat ")
+		return nil
+	}
+	pool.HeartbeatInterval = 5 * time.Microsecond
+
+	if err := pool.Init(); err != nil {
+		t.Fatal("pool Init err:", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(10 * time.Microsecond)
+		pool.Get(context.TODO())
+	}
+}
+
 func TestConnPool_GetWait(t *testing.T) {
 
 	pool := GetDefPool(t)
@@ -125,6 +145,44 @@ func TestConnPool_GetWait(t *testing.T) {
 	}
 }
 
+func TestConnPool_GetWait1(t *testing.T) {
+
+	pool := GetDefPool(t)
+	pool.Wait = true
+	pool.MaxActive = 3
+
+	if err := pool.Init(); err != nil {
+		t.Fatal("pool Init err:", err)
+	}
+
+	tranArr := []*Transport{}
+	for i := 0; i < pool.MaxActive; i++ {
+		_tran, conn, err := GetConn(context.TODO(), pool)
+		if err != nil {
+			t.Fatal("pool get err:", err)
+		}
+		t.Log("pool Get:", conn.String(), "ActiveConn:", pool.AcivteConn())
+		tranArr = append(tranArr, _tran)
+	}
+
+	go func() {
+		for _, _v := range tranArr {
+			time.Sleep(time.Second)
+			_v.Close(false)
+		}
+	}()
+
+	for i := 0; i < pool.MaxActive; i++ {
+		ctx, _ := context.WithTimeout(context.TODO(), 2*time.Second)
+		_, _c, err := GetConn(ctx, pool)
+		if err != nil {
+			t.Log("pool get err:", err, "ActiveConn:", pool.AcivteConn())
+		} else {
+			t.Error("pool get err:", err, "ActiveConn:", pool.AcivteConn(), _c.String())
+		}
+	}
+
+}
 func TestConnPool_GetNoWait(t *testing.T) {
 
 	pool := GetDefPool(t)

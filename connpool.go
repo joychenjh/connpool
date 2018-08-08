@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/luci/luci-go/common/sync/cancelcond"
 )
 
 var (
@@ -79,9 +81,10 @@ type ConnPool struct {
 	// 连接失败时重试次数. 默认为1.
 	DialRetryCount int
 
+	// 空闲连接释放时间时间 2*60s
 	IdleTimeout time.Duration
 
-	//TODO 未实现.
+	//心跳检测时间 默认60s
 	HeartbeatInterval time.Duration
 
 	// 最大活跃连接数.
@@ -103,13 +106,15 @@ type ConnPool struct {
 	reqTran chan *ReqTran
 
 	// mu protects fields defined below.
-	mu sync.Mutex
+	cond *cancelcond.Cond
 
 	closed bool
 
 	closechan chan struct{}
 
 	idleChan chan struct{}
+
+	heartbeatChan chan struct{}
 
 	UserMeta interface{}
 }
@@ -122,10 +127,6 @@ func (p *ConnPool) Init() (err error) {
 	if p.CloseConn == nil {
 		return ErrCloseConnNil
 	}
-	//TODO
-	//if p.Heartbeat != nil {
-	//	go p.ping()
-	//}
 
 	if p.DialRetryCount <= 0 {
 		p.DialRetryCount = 1
@@ -143,29 +144,41 @@ func (p *ConnPool) Init() (err error) {
 	p.freeTran = make(chan *Transport, 2*p.MaxActive)
 	p.reqTran = make(chan *ReqTran, 5*p.MaxActive)
 	p.idleChan = make(chan struct{}, 1)
+	p.heartbeatChan = make(chan struct{}, 1)
 
-	if p.IdleTimeout > 0 {
-		go p.idelPro()
-	}
+	p.cond = cancelcond.New(&sync.Mutex{})
+
+	go p.dispatch()
+
 	go p.allocationTran()
 
 	return nil
 }
 
-func (p *ConnPool) ping() {
-
-	//TODO Ping
-}
-
 //触发空闲处理.
-func (p *ConnPool) idelPro() {
-	t := time.NewTicker(p.IdleTimeout)
-	defer t.Stop()
+func (p *ConnPool) dispatch() {
+
+	if p.HeartbeatInterval <= 0 {
+		p.HeartbeatInterval = time.Minute
+	}
+
+	if p.IdleTimeout <= 0 {
+		p.IdleTimeout = 2 * time.Minute
+	}
+
+	headBeatT := time.NewTicker(p.HeartbeatInterval)
+	defer headBeatT.Stop()
+	idelProT := time.NewTicker(p.IdleTimeout)
+	defer idelProT.Stop()
 
 	for {
 		select {
-		case <-t.C:
+		case <-idelProT.C:
 			p.idleChan <- struct{}{}
+		case <-headBeatT.C:
+			if p.Heartbeat != nil {
+				p.heartbeatChan <- struct{}{}
+			}
 		case <-p.closechan:
 			return
 		}
@@ -188,7 +201,9 @@ func (p *ConnPool) allocationTran() {
 					req.err = errors.New(req.ctx.Err().Error())
 					req.done()
 				default:
-					time.Sleep(time.Millisecond)
+					p.cond.L.Lock()
+					p.cond.Wait(req.ctx)
+					p.cond.L.Unlock()
 					goto Loop
 				}
 			} else {
@@ -221,6 +236,23 @@ func (p *ConnPool) allocationTran() {
 					atomic.AddInt32(&p.numOpen, -1)
 				} else {
 					p.freeTran <- _v
+					p.cond.Signal()
+				}
+			}
+		case <-p.heartbeatChan:
+			var _pArr []*Transport
+			for len(p.freeTran) > 0 {
+				_t := <-p.freeTran
+				_pArr = append(_pArr, _t)
+			}
+
+			for _, _v := range _pArr {
+				if err := p.Heartbeat(_v.client, p.UserMeta); err != nil {
+					p.CloseConn(_v.client, p.UserMeta)
+					atomic.AddInt32(&p.numOpen, -1)
+				} else {
+					p.freeTran <- _v
+					p.cond.Signal()
 				}
 			}
 		}
@@ -322,6 +354,7 @@ func (p *ConnPool) put(tt *Transport, forceClose bool) (err error) {
 	tt.p = nil
 	tt.lastUse = time.Now()
 	p.freeTran <- tt
+	p.cond.Signal()
 
 	return nil
 }
