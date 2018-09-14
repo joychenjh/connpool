@@ -6,7 +6,9 @@
    
   
 # 特点
+
   1.支持自定义新建连接,心跳,连接关闭.
+  
   2.支持连接最大连接数限制.
 
 
@@ -82,7 +84,9 @@
 
 	
 连接池业务代码:
-	```
+
+```go
+
     //用于判断是不是传输层的错误, 如果是传输层的错误, 应该关闭连接.
 	func CheckThriftConnErr(err error) bool {
     	if err != nil {
@@ -113,7 +117,7 @@
 
 使用连接池.
 
-```
+	```
     		tran, client, err := GetClient(pool)
     		if err != nil {
     			log.Printf("GetClient err:", err)
@@ -122,6 +126,9 @@
     			req := fmt.Sprintf("index:%v_%v", index, i)
     			res, err := client.Echo(req)
     			tran.Close(CheckThriftConnErr(err))
+			if err != nil {
+			....
+			}
                 ...
     		}
 
