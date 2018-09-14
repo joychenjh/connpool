@@ -22,7 +22,7 @@
 
    定义连接池,定义新建连接,心跳,连接关闭操作.
 
-    ``` go
+    ```go
 	dialFunc := func(meta interface{}) (connpool.TClient, error) {
 		c := &ExampleClient{}
 
@@ -117,7 +117,7 @@
 
 使用连接池.
 
-	```
+	```go
     		tran, client, err := GetClient(pool)
     		if err != nil {
     			log.Printf("GetClient err:", err)
