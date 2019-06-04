@@ -93,11 +93,14 @@ type ConnPool struct {
 	// 最大连接数.
 	MaxActive int
 
-	//当前打开的连接数.
-	numOpen int32
-
 	//当为true时, 超过最大连接数后会等带别的连接释放.
 	Wait bool
+
+	//用户数据.
+	UserMeta interface{}
+
+	//当前打开的连接数.
+	numOpen int32
 
 	// 空闲连接队列.
 	freeTran chan *Transport
@@ -115,8 +118,6 @@ type ConnPool struct {
 	idleChan chan struct{}
 
 	heartbeatChan chan struct{}
-
-	UserMeta interface{}
 }
 
 func (p *ConnPool) Init() (err error) {
